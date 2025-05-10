@@ -1,6 +1,9 @@
 # Setup Instructions
 git clone https://github.com/Sakshi-SC/MLFusionRoots.git
 
+# Run the Pipeline
+snakemake --cores <number_of_cores>
+
 # MLFusionAnalyzer
 Validating Fusion Transcripts with Genomic Precision: A Machine Learning Pipeline for Plant Data
 
