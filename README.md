@@ -1,6 +1,5 @@
 # Setup Instructions
 git clone https://github.com/Sakshi-SC/MLFusionRoots.git
-cd MLFusionRoots
 
 # MLFusionAnalyzer
 Validating Fusion Transcripts with Genomic Precision: A Machine Learning Pipeline for Plant Data
