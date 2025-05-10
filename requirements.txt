@@ -1,0 +1,32 @@
+#Install Required Tools
+conda install -c bioconda -c conda-forge snakemake
+conda install -c bioconda sra-tools
+conda install -c bioconda trim-galore
+conda install -c bioconda fastqc
+conda install -c bioconda star-fusion
+conda install -c bioconda gffread
+
+
+# Download Reference Files
+To obtain the required reference files for the pipeline, run the following commands:
+
+wget https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-51/gff3/arabidopsis_thaliana/Arabidopsis_thaliana.TAIR10.51.gff3.gz 
+
+# Download FASTA (genome) file
+wget https://ftp.ensemblgenomes.ebi.ac.uk/pub/plants/release-51/fasta/arabidopsis_thaliana/dna/Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz
+
+# Decompress the downloaded files
+gunzip Arabidopsis_thaliana.TAIR10.51.gff3.gz
+gunzip Arabidopsis_thaliana.TAIR10.dna.toplevel.fa.gz
+
+# Convert GFF3 to GTF
+gffread Arabidopsis_thaliana.TAIR10.51.gff3 -T -o Arabidopsis_thaliana.TAIR10.51.gtf
+
+# Generate .fai index for the FASTA file
+samtools faidx Arabidopsis_thaliana.TAIR10.dna.toplevel.fa
+
+#Make a directory Fusion_output
+mkdir Fusion_output/
+
+#copy these to directory Fusion_output
+cp *.gtf *.fa *.fai Fusion_output/ 
