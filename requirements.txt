@@ -6,6 +6,8 @@ conda install -c bioconda fastqc
 conda install -c bioconda star-fusion
 conda install -c bioconda gffread
 
+git clone https://github.com/Sakshi-SC/MLFusionRoots.git
+cd MLFusionRoots
 
 # Download Reference Files
 To obtain the required reference files for the pipeline, run the following commands:
