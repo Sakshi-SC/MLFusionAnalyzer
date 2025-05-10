@@ -2,7 +2,7 @@
 Validating Fusion Transcripts with Genomic Precision: A Machine Learning Pipeline for Plant Data
 
 
-###Overview
+### Overview
 Gene fusions can be identified using high-throughput techniques such as RNA sequencing (RNA-Seq) and whole genome sequencing (WGS). RNA-Seq offers insights into gene and fusion transcript expression and is often more cost-effective. However, RNA-Seq-based fusion detection tools tend to produce false positives due to read misalignment and cannot accurately identify genomic breakpoints within intronic regions.
 
 WGS, on the other hand, can detect precise genomic breakpoints and structural variations at the DNA level. But WGS alone cannot distinguish between expressed and non-expressed fusions, often leading to the detection of non-functional genomic rearrangements.
