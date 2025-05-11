@@ -8,39 +8,31 @@ with open("single_ids.txt", "r") as f:
 
 rule all:
     input:
-        # Paired-end final outputs
-        #expand("pe_output/{sample}/star-fusion.fusion_predictions.abridged.tsv", sample=PE_SAMPLES),
-        # Single-end final outputs
-        #expand("se_output/{sample}/star-fusion.fusion_predictions.abridged.tsv", sample=SE_SAMPLES),
-    input:
-        expand("FUSION_OUTPUT/{sample}/.done_pe", sample=PE_SAMPLES),
-        expand("FUSION_OUTPUT/{sample}/.done_se", sample=SE_SAMPLES)
-    output:
-        "Fusion_output/tempo_fusion_data_annotated.tsv"
-    script:
-        "2.py"
+        expand("trimmed/{sample}_1_val_1.fq.gz", sample=PE_SAMPLES) if PE_SAMPLES else [],
+        expand("trimmed/{sample}_2_val_2.fq.gz", sample=PE_SAMPLES) if PE_SAMPLES else [],
+        expand("trimmed/{sample}_val.fq.gz", sample=SE_SAMPLES) if SE_SAMPLES else [],
+         expand("output/{sample}/pe_star-fusion.fusion_predictions.abridged.coding_effect.tsv", sample=PE_SAMPLES),
+        expand("output/{sample}/se_star-fusion.fusion_predictions.abridged.coding_effect.tsv", sample=SE_SAMPLES)
 
-# --- STAGE 1: Download SRA files ---
 rule download_sra:
     output:
-        "raw/{sample}.sra"
+        sra="raw/{sample}.sra"
     log:
-        "logs/download_sra_{sample}.log"
+        "logs/fastq_dump_{sample}.log"
     conda:
         "fusion.yaml"
     shell:
         """
-        prefetch {wildcards.sample} -o {output} --verbose &> {log} && \
-        vdb-validate {output} &>> {log}
+        prefetch {wildcards.sample} -o {output.sra} --verbose &> {log} && \
+        vdb-validate {output.sra} &>> {log}
         """
 
-# --- STAGE 2: Convert SRA to FASTQ ---
 rule sra_to_fastq_pe:
     input:
         "raw/{sample}.sra"
     output:
-        r1="pe_fastq/{sample}_1.fastq",
-        r2="pe_fastq/{sample}_2.fastq"
+        r1="fastq/{sample}_1.fastq",
+        r2="fastq/{sample}_2.fastq"
     log:
         "logs/fastq_dump_pe_{sample}.log"
     conda:
@@ -48,15 +40,14 @@ rule sra_to_fastq_pe:
     threads: 4
     shell:
         """
-        mkdir -p pe_fastq && \
-        fastq-dump --split-files --outdir pe_fastq {input} &> {log}
+        fastq-dump --split-files --outdir fastq/ {input} &> {log}
         """
 
 rule sra_to_fastq_se:
     input:
         "raw/{sample}.sra"
     output:
-        "se_fastq/{sample}.fastq"
+        "fastq/{sample}.fastq"
     log:
         "logs/fastq_dump_se_{sample}.log"
     conda:
@@ -64,76 +55,78 @@ rule sra_to_fastq_se:
     threads: 2
     shell:
         """
-        mkdir -p se_fastq && \
-        fastq-dump --outdir se_fastq {input} &> {log}
+        fastq-dump --outdir fastq/ {input} &> {log}
         """
 
-# --- STAGE 3: Quality Trimming ---
 rule trim_galore_pe:
     input:
-        r1="pe_fastq/{sample}_1.fastq",
-        r2="pe_fastq/{sample}_2.fastq"
+        r1="fastq/{sample}_1.fastq",
+        r2="fastq/{sample}_2.fastq"
     output:
-        r1="pe_trimmed/{sample}_1_val_1.fq.gz",
-        r2="pe_trimmed/{sample}_2_val_2.fq.gz"
+        r1_trim="trimmed/{sample}_1_val_1.fq.gz",
+        r2_trim="trimmed/{sample}_2_val_2.fq.gz"
     log:
         "logs/trim_galore_pe_{sample}.log"
     conda:
         "fusion.yaml"
-    threads: 8
+    threads: 8  # Increased from 2 to 4 (16 cores available)
     shell:
         """
-        mkdir -p pe_trimmed && \
-        trim_galore --paired --gzip --output_dir pe_trimmed {input.r1} {input.r2} &> {log}
+        trim_galore --paired --fastqc --gzip --output_dir trimmed {input.r1} {input.r2} &> {log} && \
+        [ -f {output.r1_trim} ] && [ -f {output.r2_trim} ] || \
+        (echo "Error: One or both output files missing" >> {log} && exit 1)
         """
 
 rule trim_galore_se:
     input:
-        "se_fastq/{sample}.fastq"
+        "fastq/{sample}.fastq"
     output:
-        "se_trimmed/{sample}_trimmed.fq.gz"
+        "trimmed/{sample}_val.fq.gz"
     log:
         "logs/trim_galore_se_{sample}.log"
     conda:
         "fusion.yaml"
-    threads: 4
+    threads: 1
     shell:
         """
-        mkdir -p se_trimmed && \
-        trim_galore --gzip --output_dir se_trimmed {input} &> {log}
+        trim_galore --fastqc --gzip --output_dir trimmed {input} &> {log} && \
+        [ -f trimmed/{wildcards.sample}_trimmed.fq.gz ] && mv trimmed/{wildcards.sample}_trimmed.fq.gz {output} || \
+        (echo "Error: Expected output trimmed/{wildcards.sample}_trimmed.fq.gz not found" >> {log} && exit 1)
         """
 
-# --- STAGE 4: STAR-Fusion Analysis ---
 rule star_fusion_pe:
     input:
-        r1="pe_trimmed/{sample}_1_val_1.fq.gz",
-        r2="pe_trimmed/{sample}_2_val_2.fq.gz"
+        pe_r1="trimmed/{sample}_1_val_1.fq.gz",
+        pe_r2="trimmed/{sample}_2_val_2.fq.gz"
     output:
-        "pe_output/{sample}/star-fusion.fusion_predictions.abridged.tsv"
+        "output/{sample}/pe_star-fusion.fusion_predictions.abridged.coding_effect.tsv"
     log:
-        "logs/star_fusion_pe_{sample}.log"
+        "logs/star_fusion_{sample}.log"
     conda:
         "fusion.yaml"
     threads: 8
     shell:
         """
-        mkdir -p pe_output/{wildcards.sample} && \
-        gunzip -c {input.r1} > pe_trimmed/{wildcards.sample}_1_val_1.fq && \
-        gunzip -c {input.r2} > pe_trimmed/{wildcards.sample}_2_val_2.fq && \
+        mkdir -p output/{wildcards.sample} && \
+        gunzip -c {input.pe_r1} > trimmed/{wildcards.sample}_1_val_1.fq && \
+        gunzip -c {input.pe_r2} > trimmed/{wildcards.sample}_2_val_2.fq && \
         STAR-Fusion \
-            --left_fq pe_trimmed/{wildcards.sample}_1_val_1.fq \
-            --right_fq pe_trimmed/{wildcards.sample}_2_val_2.fq \
+            --left_fq trimmed/{wildcards.sample}_1_val_1.fq \
+            --right_fq trimmed/{wildcards.sample}_2_val_2.fq \
             --genome_lib_dir arabidopsis_lib \
+            -O output/{wildcards.sample} \
+            #--FusionInspector validate \
             --examine_coding_effect \
-            -O pe_output/{wildcards.sample} &> {log} && \
-        rm pe_trimmed/{wildcards.sample}_1_val_1.fq pe_trimmed/{wildcards.sample}_2_val_2.fq
+            --denovo_reconstruct &> {log} && \
+        mv output/{wildcards.sample}/star-fusion.fusion_predictions.abridged.coding_effect.tsv output/{wildcards.sample}/pe_star-fusion.fusion_predictions.abridged.coding_effect.tsv && \
+rm trimmed/{wildcards.sample}_1_val_1.fq trimmed/{wildcards.sample}_2_val_2.fq
         """
 
 rule star_fusion_se:
     input:
-        "se_trimmed/{sample}_trimmed.fq.gz"
+        "trimmed/{sample}_val.fq.gz"
     output:
-        "se_output/{sample}/star-fusion.fusion_predictions.abridged.tsv"
+        "output/{sample}/se_star-fusion.fusion_predictions.abridged.coding_effect.tsv"
     log:
         "logs/star_fusion_se_{sample}.log"
     conda:
@@ -141,48 +134,17 @@ rule star_fusion_se:
     threads: 8
     shell:
         """
-        mkdir -p se_output/{wildcards.sample} && \
-        gunzip -c {input} > se_trimmed/{wildcards.sample}_val.fq && \
+        mkdir -p output/{wildcards.sample} && \
+        gunzip -c {input} > trimmed/{wildcards.sample}_val.fq && \
         STAR-Fusion \
-            --left_fq se_trimmed/{wildcards.sample}_val.fq \
+            --left_fq trimmed/{wildcards.sample}_val.fq \
             --genome_lib_dir arabidopsis_lib \
+            -O output/{wildcards.sample} \
+            #--FusionInspector validate \
             --examine_coding_effect \
-            -O se_output/{wildcards.sample} &> {log} && \
-#STAGE 5: Move STAR-Fusion Output to Unified Directory ---
-rule move_star_fusion_pe:
-    input:
-        "pe_output/{sample}/star-fusion.fusion_predictions.abridged.tsv"
-    output:
-        touch("FUSION_OUTPUT/{sample}/.done_pe")
-    run:
-        import shutil, os
-        src_dir = f"pe_output/{wildcards.sample}"
-        dest_dir = f"FUSION_OUTPUT/{wildcards.sample}"
-        if not os.path.exists("FUSION_OUTPUT"):
-            os.makedirs("FUSION_OUTPUT")
-        shutil.move(src_dir, dest_dir)
-
-rule move_star_fusion_se:
-    input:
-        "se_output/{sample}/star-fusion.fusion_predictions.abridged.tsv"
-    output:
-        touch("FUSION_OUTPUT/{sample}/.done_se")
-    run:
-        import shutil, os
-        src_dir = f"se_output/{wildcards.sample}"
-        dest_dir = f"FUSION_OUTPUT/{wildcards.sample}"
-        if not os.path.exists("FUSION_OUTPUT"):
-            os.makedirs("FUSION_OUTPUT")
-        shutil.move(src_dir, dest_dir)
+            --denovo_reconstruct &> {log} && \
+        mv output/{wildcards.sample}/star-fusion.fusion_predictions.abridged.coding_effect.tsv output/{wildcards.sample}/se_star-fusion.fusion_predictions.abridged.coding_effect.tsv && \
+rm trimmed/{wildcards.sample}_val.fq
         """
 
-
-# --- Execution Order Control ---
-ruleorder:
-ruleorder: download_sra > sra_to_fastq_pe
-ruleorder: sra_to_fastq_pe > trim_galore_pe
-ruleorder: trim_galore_pe > star_fusion_pe
-
-ruleorder: download_sra > sra_to_fastq_se
-ruleorder: sra_to_fastq_se > trim_galore_se
-ruleorder: trim_galore_se > star_fusion_s
+ruleorder: sra_to_fastq_pe > sra_to_fastq_se # trim_galore_pe > trim_galore_se > star_fusion_pe > star_fusion_se
